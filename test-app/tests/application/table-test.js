@@ -1,13 +1,17 @@
 import Component from '@glimmer/component';
+import { tracked } from '@glimmer/tracking';
 import { setComponentTemplate } from '@ember/component';
+import Controller from '@ember/controller';
 import { destroy } from '@ember/destroyable';
+import { action } from '@ember/object';
 import Route from '@ember/routing/route';
 import { currentURL, visit } from '@ember/test-helpers';
-import { triggerEvent } from '@ember/test-helpers';
 import { hbs } from 'ember-cli-htmlbars';
 import { module, test } from 'qunit';
 
 import { headlessTable } from 'ember-headless-table';
+import { ColumnResizing } from 'ember-headless-table/plugins/column-resizing';
+import { RowSelection } from 'ember-headless-table/plugins/row-selection';
 import { setupApplicationTest } from 'test-app/tests/helpers';
 
 module('Acceptance | table', function (hooks) {
@@ -18,11 +22,21 @@ module('Acceptance | table', function (hooks) {
       table = headlessTable(this, {
         columns: () => [{ name: 'Column A', key: 'A' }],
         data: () => [{ A: 'Apple' }],
+        plugins: [
+          ColumnResizing,
+          RowSelection.with(() => {
+            return {
+              selection: [this.args.selected].filter(Boolean),
+              onSelect: () => {},
+              onDeselect: () => {},
+            };
+          }),
+        ],
       });
     }
     setComponentTemplate(
       hbs`
-        <div id="test-table-container" {{this.table.modifiers.container}}>
+        <div style="width: {{if @isNarrow "500" "1000"}}px" id="test-table-container" {{this.table.modifiers.container}} >
           <table>
             <thead>
               <tr>
@@ -33,7 +47,7 @@ module('Acceptance | table', function (hooks) {
             </thead>
             <tbody>
               {{#each this.table.rows as |row|}}
-                <tr>
+                <tr {{@table.modifiers.row row}}>
                   {{#each this.table.columns as |column|}}
                     <td>{{column.getValueForRow row}}</td>
                   {{/each}}
@@ -47,7 +61,32 @@ module('Acceptance | table', function (hooks) {
     );
 
     this.owner.register('route:table-test', class extends Route {});
-    this.owner.register('template:table-test', hbs`<TableTestComponent />`);
+    this.owner.register(
+      'controller:table-test',
+      class extends Controller {
+        @tracked isNarrow = false;
+        @action toggleIsNarrow() {
+          console.log('toggle');
+          this.isNarrow = !this.isNarrow;
+        }
+        get selected() {
+          // this getter only gets evaluated once, even after a resize
+          if (this.isDestroyed || this.isDestroying) {
+            throw new Error('destroyed!');
+          }
+
+          return { A: 'Apple' };
+        }
+      }
+    );
+    this.owner.register(
+      'template:table-test',
+      hbs`
+        <div id="page">
+          <button type="button" id="toggle" {{on "click" this.toggleIsNarrow}}>Toggle width</button>
+          <TableTestComponent @selected={{this.selected}} @isNarrow={{this.isNarrow}} />
+        </div>`
+    );
     this.owner.register('component:table-test-component', TableTestComponent);
   });
 
@@ -63,8 +102,12 @@ module('Acceptance | table', function (hooks) {
     assert.dom('table tbody tr td').exists({ count: 1 }, 'Has a table tbody tr td');
     assert.dom('table tbody tr td').hasText('Apple', 'Has correct cell content');
 
-    destroy(this);
+    const button = document.getElementById('toggle');
 
-    await triggerEvent('#test-table-container', 'resize');
+    //destroy(this); // we'll do this once we make sure the controller getter property gets re-evaluated on resize
+
+    await button.click(); // this triggers the table resize
+
+    // We expect table resize to re-trigger the controller getter that provides the selection to rowSelection plugin, but right now it does not :/
   });
 });
