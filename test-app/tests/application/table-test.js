@@ -5,7 +5,7 @@ import Controller from '@ember/controller';
 import { destroy } from '@ember/destroyable';
 import { action } from '@ember/object';
 import Route from '@ember/routing/route';
-import { currentURL, visit } from '@ember/test-helpers';
+import { click, currentURL, visit } from '@ember/test-helpers';
 import { hbs } from 'ember-cli-htmlbars';
 import { module, test } from 'qunit';
 
@@ -21,7 +21,7 @@ module('Acceptance | table', function (hooks) {
     class TableTestComponent extends Component {
       table = headlessTable(this, {
         columns: () => [{ name: 'Column A', key: 'A' }],
-        data: () => [{ A: 'Apple' }],
+        data: () => [{ A: this.args.isNarrow ? 'App' : 'Apple' }],
         plugins: [
           ColumnResizing,
           RowSelection.with(() => {
@@ -70,12 +70,11 @@ module('Acceptance | table', function (hooks) {
           this.isNarrow = !this.isNarrow;
         }
         get selected() {
-          // this getter only gets evaluated once, even after a resize
           if (this.isDestroyed || this.isDestroying) {
             throw new Error('destroyed!');
           }
 
-          return { A: 'Apple' };
+          return this.isNarrow ? { A: 'App' } : { A: 'Apple' };
         }
       }
     );
@@ -104,10 +103,10 @@ module('Acceptance | table', function (hooks) {
 
     const button = document.getElementById('toggle');
 
-    //destroy(this); // we'll do this once we make sure the controller getter property gets re-evaluated on resize
+    click(button); // this triggers the table resize
 
-    await button.click(); // this triggers the table resize
-
-    // We expect table resize to re-trigger the controller getter that provides the selection to rowSelection plugin, but right now it does not :/
+    // destroy the test context without waiting for async stuff to resolve
+    // this *should* trigger the resizeObserver but appears not to
+    destroy(this);
   });
 });
